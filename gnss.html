@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GNSS 2セット観測 集計</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="GNSS集計">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f6f5a">
+<style>
+/* 測量野帳のような 実務の表。罫線は細く、数字は等幅でそろえる */
+:root {
+  --bg: #f5f6f3; --card: #ffffff; --ink: #1d2a24; --sub: #5b6b63; --rule: #cfd6d0;
+  --accent: #1f6f5a; --ok: #1e7a3a; --okbg: #e3f3e7; --ng: #b3261e; --ngbg: #fbe4e2; --warn: #8a5a00; --warnbg: #fff3d6;
+  --mono: "BIZ UDGothic", "Consolas", "MS Gothic", monospace;
+  --sans: "BIZ UDPGothic", "Meiryo", "Hiragino Sans", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151a18; --card: #1d2421; --ink: #e4ece7; --sub: #9fb0a7; --rule: #36423d; --accent: #5cc3a3;
+          --ok: #7fd49a; --okbg: #1f3a29; --ng: #ff9a8f; --ngbg: #45221f; --warn: #f2c66b; --warnbg: #3d3115; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 var(--sans); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 16px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 16px; }
+header h1 { margin: 0; font-size: 22px; letter-spacing: .02em; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--sub); }
+section { background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+section h2 { margin: 0 0 10px; font-size: 15px; color: var(--accent); letter-spacing: .04em; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 14px; }
+label.f { display: grid; gap: 2px; font-size: 12px; color: var(--sub); }
+input, select, textarea { font: 13px var(--sans); color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 7px; width: 100%; }
+input.n { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+textarea { font-family: var(--mono); min-height: 110px; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { border: 1px solid var(--rule); padding: 3px 6px; white-space: nowrap; }
+th { background: var(--bg); font-weight: 600; font-size: 12px; color: var(--sub); }
+td.num { font-family: var(--mono); text-align: right; }
+td input { border: 0; background: transparent; padding: 2px 4px; min-width: 6em; }
+td input.n { min-width: 8.5em; }
+.pill { display: inline-block; padding: 0 8px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+.ok { color: var(--ok); background: var(--okbg); } .ng { color: var(--ng); background: var(--ngbg); } .wa { color: var(--warn); background: var(--warnbg); }
+td.ngc { color: var(--ng); font-weight: 700; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { font: 600 13px var(--sans); border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+button.pri { background: var(--accent); color: var(--card); }
+button.del { border-color: var(--rule); color: var(--sub); padding: 2px 8px; }
+.note { color: var(--sub); font-size: 12px; }
+.sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.sum div { border-left: 3px solid var(--rule); padding: 2px 10px; }
+.sum b { display: block; font: 700 18px var(--mono); }
+.msg { min-height: 1.4em; color: var(--accent); font-size: 13px; }
+.pv { display: none; }
+@media print {
+  body { background: #fff; color: #000; font-size: 11px; }
+  .noprint { display: none !important; }
+  /* ★印刷では 入力欄を 隠し、同じ値を 折り返す文字（.pv）で 出す（欄の幅で 切れないように） */
+  input, select, textarea { display: none !important; }
+  .pv { display: block; white-space: pre-wrap; word-break: break-all; min-height: 1.2em; font-size: 11px; color: #000; }
+  label.f .pv { border-bottom: 1px solid #999; padding: 1px 2px; }
+  td .pv.n { text-align: right; font-family: var(--mono); }
+  th, td { white-space: normal; }
+  /* 頁の境目で 切れないように：行・まとめの箱・見出しの直後 */
+  tr, .sum, .sum div, label.f { break-inside: avoid; page-break-inside: avoid; }
+  h2 { break-after: avoid; page-break-after: avoid; }
+  thead { display: table-header-group; }
+  /* 列の幅を 印刷用に 決める（数字の列は 狭く、出典・備考に 残りを回す） */
+  #tKnown, #tObs { table-layout: fixed; }
+  #tKnown th:nth-child(1) { width: 9%; } #tKnown th:nth-child(2), #tKnown th:nth-child(3) { width: 13%; }
+  #tKnown th:nth-child(4) { width: 14%; } #tKnown th:nth-child(6) { width: 0; }
+  #tObs th:nth-child(1) { width: 9%; } #tObs th:nth-child(2) { width: 5%; } #tObs th:nth-child(3), #tObs th:nth-child(4) { width: 13%; }
+  #tObs th:nth-child(5) { width: 9%; } #tObs th:nth-child(6) { width: 9%; } #tObs th:nth-child(8) { width: 0; }
+  #tKnown td:last-child, #tObs td:last-child, #tKnown th:last-child, #tObs th:last-child { display: none; }
+  section { border: 0; padding: 4px 0; }
+  .wrap { max-width: none; padding: 0; gap: 6px; }
+  th { background: #eee; color: #000; }
+  .pill { border: 1px solid #000; }
+  @page { size: A4 landscape; margin: 12mm; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>GNSS 2セット観測 集計</h1>
+  <p>既知点の点検（ST33・ST34・ST35・△K5.2）と 標定点・検証点の 2セット観測を まとめる。
+     2セットの較差の制限は 作業規程の準則 TS点の設置（第93・94条）準用：ΔN・ΔE 20 mm、ΔU 30 mm。</p>
+</header>
+
+<section>
+  <h2>観測の情報</h2>
+  <div class="grid">
+    <label class="f">工事名<input id="iKoji" value="07国補河改 第07-05-149-A-004号 河川改修工事（その４）"></label>
+    <label class="f">観測日<input id="iDate" type="date"></label>
+    <label class="f">観測者<input id="iObs" placeholder="例：迫"></label>
+    <label class="f">受信機<input id="iRcv" placeholder="機種名・製造番号"></label>
+    <label class="f">コントローラ・ソフト<input id="iCtl" value="TOPCON FC-500 ／ MAGNET Field"></label>
+    <label class="f">補正情報<input id="iCorr" value="ネットワーク型RTK（ジェノバ VRS）"></label>
+    <label class="f">座標系・ジオイド<input id="iGeo" value="平面直角座標系 第Ⅸ系（JGD2011）／ジオイド2024"></label>
+    <label class="f">1セットの観測（エポック数・FIX）<input id="iEpo" value="FIX解・10エポック以上"></label>
+  </div>
+</section>
+
+<section>
+  <h2>既知点（成果）</h2>
+  <div class="tbl"><table id="tKnown"><thead><tr><th>点名</th><th>X（北）</th><th>Y（東）</th><th>標高 H（測地成果2011）</th><th>出典</th><th class="noprint"></th></tr></thead><tbody></tbody></table></div>
+  <div class="bar noprint" style="margin-top:8px"><button id="bAddK">既知点を追加</button>
+    <span class="note">標高は 工事で使う 測地成果2011 の値。ST33・ST35 は 水準確認測量（10/8・10/13）を KBM.6＝9.851 基準に換算した値、ST34 は 成果簿（H24）の参考値。</span></div>
+</section>
+
+<section class="noprint">
+  <h2>観測値の取り込み</h2>
+  <p class="note">MAGNET Field から 書き出した 点の CSV（点名, X(北), Y(東), 標高 … の順）を 貼り付けるか、ファイルを選んでください。
+    1セット目・2セット目は 点名の末尾（ST33-1・ST33_2・ST33(2)・ST33-2S）で 見分けます。末尾が無いときは 同じ点名の 1回目＝1セット、2回目＝2セットとします。
+    列の順が違うときは 下の「列の順」を 変えてください。</p>
+  <div class="grid">
+    <label class="f">列の順<select id="iCols">
+      <option value="nxyh">点名, X(北), Y(東), 標高</option>
+      <option value="nyxh">点名, Y(東), X(北), 標高</option>
+      <option value="cnxyh">番号, 点名, X(北), Y(東), 標高</option>
+    </select></label>
+    <label class="f">ファイル（.csv／.txt）<input id="iFile" type="file" accept=".csv,.txt"></label>
+  </div>
+  <textarea id="iPaste" placeholder="ST33-1,84601.690,79195.605,6.502&#10;ST33-2,84601.684,79195.598,6.509"></textarea>
+  <div class="bar"><button class="pri" id="bImport">貼り付けた内容を 取り込む</button><button id="bAddO">観測を 1行 追加</button>
+    <span class="msg" id="msg"></span></div>
+</section>
+
+<section>
+  <h2>観測値</h2>
+  <div class="tbl"><table id="tObs"><thead><tr><th>点名</th><th>セット</th><th>X（北）</th><th>Y（東）</th><th>標高 H</th><th>観測時刻</th><th>備考</th><th class="noprint"></th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section>
+  <h2>集計</h2>
+  <div class="sum" id="sum"></div>
+  <div class="tbl" style="margin-top:10px"><table id="tRes"><thead>
+    <tr><th rowspan="2">点名</th><th colspan="4">2セットの較差（mm）</th><th colspan="3">平均値（2セット）</th><th colspan="4">既知点との差（平均 − 成果、mm）</th></tr>
+    <tr><th>ΔN</th><th>ΔE</th><th>ΔU</th><th>判定</th><th>X（北）</th><th>Y（東）</th><th>標高 H</th><th>dX</th><th>dY</th><th>水平</th><th>dH</th></tr>
+  </thead><tbody></tbody></table></div>
+  <p class="note">判定：|ΔN|・|ΔE| ≦ 20 mm かつ |ΔU| ≦ 30 mm で「合格」。2セットそろっていない点は「未」。
+    dH は ジオイド2024 の高さと 測地成果2011 の標高の差を そのまま含む（この現場では +5.5 cm 前後が見込み。KBM.6 で 4180 基準 9.906 と 9.851 の差）。
+    高さは ローカライズ（K5.2 の1点合わせ）で そろえる前提なので、dH は 点どうしの そろい方（ばらつき）で見る。</p>
+  <div class="bar noprint">
+    <button class="pri" id="bPrint">記録表を印刷（PDF保存）</button>
+    <button id="bCsv">平均値を CSV で保存</button>
+    <button id="bSim">平均値を SIMA で保存</button>
+    <button id="bJson">作業データを保存</button>
+    <label class="f" style="display:inline-grid">作業データを開く<input id="iJson" type="file" accept=".json"></label>
+    <button id="bClear">観測値を すべて消す</button><span class="msg" id="msg2"></span>
+  </div>
+</section>
+</div>
+
+<script>
+'use strict';
+const KEY = 'gnss2set_shiota_v1';
+const DEF_KNOWN = [
+  { n: 'ST33', x: 84601.682, y: 79195.600, h: 6.448, src: '成果簿 p.436／H：水準確認測量をKBM.6基準に換算' },
+  { n: 'ST34', x: 84616.853, y: 79165.875, h: 6.825, src: '成果簿 p.436／H：H24成果（参考・未点検）' },
+  { n: 'ST35', x: 84634.876, y: 79117.234, h: 7.350, src: '成果簿 p.436／H：水準確認測量をKBM.6基準に換算' },
+  { n: 'K5.2', x: 84780.888, y: 78568.591, h: 9.851, src: '成果簿 p.436（△K5.2）／H：KBM.6' },
+];
+// 画面を開いたとき 何をする道具か 分かるように、例の観測値を 入れておく（★例。実測で 置き換える）
+const DEF_OBS = [
+  { n: 'ST33', s: 1, x: 84601.689, y: 79195.604, h: 6.506, t: '', m: '例' }, { n: 'ST33', s: 2, x: 84601.683, y: 79195.596, h: 6.511, t: '', m: '例' },
+  { n: 'K5.2', s: 1, x: 84780.893, y: 78568.586, h: 9.909, t: '', m: '例' }, { n: 'K5.2', s: 2, x: 84780.885, y: 78568.594, h: 9.903, t: '', m: '例' },
+];
+let S = { info: {}, known: DEF_KNOWN, obs: DEF_OBS };
+const $ = id => document.getElementById(id);
+const INFO = ['iKoji', 'iDate', 'iObs', 'iRcv', 'iCtl', 'iCorr', 'iGeo', 'iEpo'];
+
+function load() {
+  try { const t = localStorage.getItem(KEY); if (t) S = Object.assign(S, JSON.parse(t)); } catch (e) {}
+  for (const id of INFO) if (S.info[id] != null) $(id).value = S.info[id];
+  if (!$('iDate').value) $('iDate').value = new Date().toISOString().slice(0, 10);
+}
+function save() {
+  for (const id of INFO) S.info[id] = $(id).value;
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+}
+const num = v => { const x = parseFloat(String(v).replace(/[，,]/g, '')); return isFinite(x) ? x : null; };
+const f3 = v => v == null ? '' : v.toFixed(3);
+const mm = v => v == null ? '' : (v >= 0 ? '+' : '') + Math.round(v * 1000);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// 点名の正規化（△ や 空白を 除いて 比べる）
+const key = n => String(n || '').replace(/[△\s　]/g, '').toUpperCase();
+
+function renderKnown() {
+  const tb = $('tKnown').tBodies[0];
+  tb.innerHTML = S.known.map((k, i) => `<tr>
+    <td><input data-k="${i}" data-f="n" value="${esc(k.n)}"></td>
+    <td><input class="n" data-k="${i}" data-f="x" value="${f3(k.x)}"></td>
+    <td><input class="n" data-k="${i}" data-f="y" value="${f3(k.y)}"></td>
+    <td><input class="n" data-k="${i}" data-f="h" value="${f3(k.h)}"></td>
+    <td><input data-k="${i}" data-f="src" value="${esc(k.src)}"></td>
+    <td class="noprint"><button class="del" data-dk="${i}">削除</button></td></tr>`).join('');
+}
+function renderObs() {
+  const tb = $('tObs').tBodies[0];
+  tb.innerHTML = S.obs.map((o, i) => `<tr>
+    <td><input data-o="${i}" data-f="n" value="${esc(o.n)}"></td>
+    <td><select data-o="${i}" data-f="s"><option value="1"${o.s == 1 ? ' selected' : ''}>1</option><option value="2"${o.s == 2 ? ' selected' : ''}>2</option></select></td>
+    <td><input class="n" data-o="${i}" data-f="x" value="${f3(o.x)}"></td>
+    <td><input class="n" data-o="${i}" data-f="y" value="${f3(o.y)}"></td>
+    <td><input class="n" data-o="${i}" data-f="h" value="${f3(o.h)}"></td>
+    <td><input data-o="${i}" data-f="t" value="${esc(o.t)}" placeholder="9:05"></td>
+    <td><input data-o="${i}" data-f="m" value="${esc(o.m)}"></td>
+    <td class="noprint"><button class="del" data-do="${i}">削除</button></td></tr>`).join('');
+}
+
+// 集計：点ごとに 1セット・2セットを 拾う（同じセットが 複数あれば 最後のもの）
+function compute() {
+  const pts = new Map();
+  for (const o of S.obs) {
+    if (!o.n || o.x == null || o.y == null) continue;
+    const k = key(o.n);
+    if (!pts.has(k)) pts.set(k, { n: o.n, s: {} });
+    pts.get(k).s[o.s] = o;
+  }
+  const kn = new Map(S.known.map(k => [key(k.n), k]));
+  const rows = [];
+  for (const [k, p] of pts) {
+    const a = p.s[1], b = p.s[2], K = kn.get(k);
+    const r = { n: p.n, known: !!K };
+    if (a && b) {
+      r.dN = b.x - a.x; r.dE = b.y - a.y; r.dU = (a.h != null && b.h != null) ? b.h - a.h : null;
+      r.pass = Math.abs(r.dN) <= 0.020 && Math.abs(r.dE) <= 0.020 && (r.dU == null || Math.abs(r.dU) <= 0.030);
+      r.x = (a.x + b.x) / 2; r.y = (a.y + b.y) / 2; r.h = r.dU == null ? (a.h ?? b.h) : (a.h + b.h) / 2;
+    } else {
+      const o = a || b; r.x = o.x; r.y = o.y; r.h = o.h; r.pass = null;
+    }
+    if (K) { r.ex = r.x - K.x; r.ey = r.y - K.y; r.eh = (r.h != null && K.h != null) ? r.h - K.h : null; r.e2 = Math.hypot(r.ex, r.ey); }
+    rows.push(r);
+  }
+  // 既知点を 先に、表に 並べた順で
+  const order = n => { const i = S.known.findIndex(k => key(k.n) === key(n)); return i < 0 ? 1000 : i; };
+  rows.sort((p, q) => order(p.n) - order(q.n) || String(p.n).localeCompare(String(q.n), 'ja', { numeric: true }));
+  return rows;
+}
+function renderRes() {
+  const rows = compute();
+  const tb = $('tRes').tBodies[0];
+  const c = (v, lim) => `<td class="num${v != null && Math.abs(v) > lim ? ' ngc' : ''}">${mm(v)}</td>`;
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${esc(r.n)}${r.known ? '' : ' <span class="note">（新点）</span>'}</td>
+    ${c(r.dN, 0.020)}${c(r.dE, 0.020)}${c(r.dU, 0.030)}
+    <td>${r.pass == null ? '<span class="pill wa">未</span>' : r.pass ? '<span class="pill ok">合格</span>' : '<span class="pill ng">再観測</span>'}</td>
+    <td class="num">${f3(r.x)}</td><td class="num">${f3(r.y)}</td><td class="num">${f3(r.h)}</td>
+    <td class="num">${r.known ? mm(r.ex) : ''}</td><td class="num">${r.known ? mm(r.ey) : ''}</td>
+    <td class="num">${r.known ? Math.round(r.e2 * 1000) : ''}</td><td class="num">${r.known ? mm(r.eh) : ''}</td></tr>`).join('')
+    || '<tr><td colspan="12" class="note">観測値を 取り込むと ここに 集計が出ます。</td></tr>';
+  // まとめ
+  const done = rows.filter(r => r.pass != null), ok = done.filter(r => r.pass).length;
+  const kr = rows.filter(r => r.known);
+  const hs = kr.map(r => r.eh).filter(v => v != null);
+  const mean = hs.length ? hs.reduce((a, b) => a + b, 0) / hs.length : null;
+  const sd = hs.length > 1 ? Math.sqrt(hs.reduce((a, b) => a + (b - mean) ** 2, 0) / (hs.length - 1)) : null;
+  const e2max = kr.length ? Math.max(...kr.map(r => r.e2)) : null;
+  $('sum').innerHTML = `
+    <div><span class="note">2セットの較差</span><b>${ok} / ${done.length} 点 合格</b><span class="note">${done.length - ok ? '制限を超えた点は 再観測' : '制限内'}${rows.length - done.length ? '／1セットだけの点 ' + (rows.length - done.length) : ''}</span></div>
+    <div><span class="note">既知点との水平の差（最大）</span><b>${e2max == null ? '―' : Math.round(e2max * 1000) + ' mm'}</b><span class="note">既知点 ${kr.length} 点</span></div>
+    <div><span class="note">既知点との高さの差（平均）</span><b>${mean == null ? '―' : mm(mean) + ' mm'}</b><span class="note">ジオイド2024 と 測地成果2011 の差を含む</span></div>
+    <div><span class="note">高さの差の ばらつき（標準偏差）</span><b>${sd == null ? '―' : Math.round(sd * 1000) + ' mm'}</b><span class="note">小さいほど 点どうしが そろっている</span></div>`;
+}
+function renderAll() { renderKnown(); renderObs(); renderRes(); save(); }
+
+// 入力の反映（表の中の 入力欄）
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.k != null) { const k = S.known[+t.dataset.k], fld = t.dataset.f; k[fld] = ['x', 'y', 'h'].includes(fld) ? num(t.value) : t.value; renderAll(); }
+  else if (t.dataset.o != null) { const o = S.obs[+t.dataset.o], fld = t.dataset.f; o[fld] = ['x', 'y', 'h'].includes(fld) ? num(t.value) : fld === 's' ? +t.value : t.value; renderAll(); }
+  else if (INFO.includes(t.id)) save();
+});
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (t.dataset.dk != null) { S.known.splice(+t.dataset.dk, 1); renderAll(); }
+  if (t.dataset.do != null) { S.obs.splice(+t.dataset.do, 1); renderAll(); }
+});
+$('bAddK').onclick = () => { S.known.push({ n: '', x: null, y: null, h: null, src: '' }); renderAll(); };
+$('bAddO').onclick = () => { S.obs.push({ n: '', s: 1, x: null, y: null, h: null, t: '', m: '' }); renderAll(); };
+
+// 取り込み：点名の末尾で セットを判定
+function splitSet(name) {
+  // セット番号と みなすのは 「区切り（- _ 空白）の後」「かっこの中」「S・セットが付く」ときだけ。
+  // 標1・検2・ST32・K5.2 のような 点名の 末尾の数字は セット番号と みなさない
+  const s0 = String(name).trim();
+  let m = s0.match(/^(.+?)(?:[\s_\-－]+|[（(]\s*)([12])\s*(?:S|ｾｯﾄ|セット|SET)?\s*[)）]?$/i)
+       || s0.match(/^(.+?)([12])\s*(?:S|ｾｯﾄ|セット|SET)$/i);
+  if (m && m[1]) return { n: m[1].trim(), s: +m[2] };
+  return { n: String(name).trim(), s: 0 };
+}
+function importText(txt) {
+  const mode = $('iCols').value; let n = 0, skip = 0;
+  // 例の行は 先に消す（残すと セットの数え方が ずれる）
+  if (/\d/.test(txt) && S.obs.some(o => o.m === '例')) S.obs = S.obs.filter(o => o.m !== '例');
+  const cnt = {};
+  for (const o of S.obs) cnt[key(o.n)] = Math.max(cnt[key(o.n)] || 0, o.s);
+  for (const line of txt.split(/\r?\n/)) {
+    const c = line.split(/[,\t]/).map(s => s.trim());
+    if (c.length < 4) { if (line.trim()) skip++; continue; }
+    let nm, x, y, h;
+    if (mode === 'nxyh') [nm, x, y, h] = [c[0], c[1], c[2], c[3]];
+    else if (mode === 'nyxh') [nm, y, x, h] = [c[0], c[1], c[2], c[3]];
+    else [nm, x, y, h] = [c[1], c[2], c[3], c[4]];
+    x = num(x); y = num(y); h = num(h);
+    if (x == null || y == null) { skip++; continue; }
+    let { n: base, s } = splitSet(nm);
+    if (!s) s = Math.min(2, (cnt[key(base)] || 0) + 1);
+    cnt[key(base)] = Math.max(cnt[key(base)] || 0, s);
+    const k = key(base) + '#' + s;
+    const i = S.obs.findIndex(o => key(o.n) + '#' + o.s === k);
+    const rec = { n: base, s, x, y, h, t: '', m: '' };
+    if (i >= 0) S.obs[i] = Object.assign(S.obs[i], rec); else S.obs.push(rec);
+    n++;
+  }
+  renderAll();
+  $('msg').textContent = n ? `${n} 行を 取り込みました` + (skip ? `（読めなかった行 ${skip}）` : '') : '取り込める行が ありませんでした。列の順を 確かめてください。';
+}
+$('bImport').onclick = () => importText($('iPaste').value);
+$('iFile').onchange = e => {
+  const fl = e.target.files[0]; if (!fl) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    let t = rd.result;
+    // Shift_JIS の CSV にも 対応（文字化けしたら 読み直す）
+    if (t.includes('�')) { const r2 = new FileReader(); r2.onload = () => importText(r2.result); r2.readAsText(fl, 'shift_jis'); }
+    else importText(t);
+  };
+  rd.readAsText(fl, 'utf-8');
+};
+
+// 書き出し（ローカルの ファイルとして 保存）
+function saveFile(name, text, type) {
+  const bom = type.includes('csv') ? '﻿' : '';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([bom + text], { type }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  $('msg2').textContent = name + ' を 保存しました';
+}
+const stamp = () => ($('iDate').value || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
+$('bCsv').onclick = () => {
+  const rows = compute();
+  const L = ['点名,X(北),Y(東),標高H,2セット判定,ΔN(mm),ΔE(mm),ΔU(mm)'];
+  for (const r of rows) L.push([r.n, f3(r.x), f3(r.y), f3(r.h), r.pass == null ? '未' : r.pass ? '合格' : '再観測', mm(r.dN), mm(r.dE), mm(r.dU)].join(','));
+  saveFile(`GNSS2セット平均_${stamp()}.csv`, L.join('\r\n') + '\r\n', 'text/csv');
+};
+$('bSim').onclick = () => {
+  const rows = compute().filter(r => r.pass !== false);
+  const L = ['G00,01,塩田川 GNSS2セット平均,', 'Z00,座標ﾃﾞｰﾀ,', 'A00,'];
+  rows.forEach((r, i) => L.push(`A01,${i + 1},${r.n},${f3(r.x)},${f3(r.y)},${f3(r.h)},`));
+  L.push('A99,', 'Z00,');
+  saveFile(`GNSS2セット平均_${stamp()}.sim`, L.join('\r\n') + '\r\n', 'text/plain');
+};
+$('bJson').onclick = () => { save(); saveFile(`GNSS2セット作業_${stamp()}.json`, JSON.stringify(S, null, 1), 'application/json'); };
+$('iJson').onchange = e => {
+  const fl = e.target.files[0]; if (!fl) return;
+  const rd = new FileReader();
+  rd.onload = () => { try { S = JSON.parse(rd.result); for (const id of INFO) $(id).value = S.info[id] ?? $(id).value; renderAll(); $('msg2').textContent = '作業データを 開きました'; } catch (err) { $('msg2').textContent = '作業データを 読めませんでした（.json の形が 違います）'; } };
+  rd.readAsText(fl, 'utf-8');
+};
+let clearArm = 0;
+$('bClear').onclick = () => {
+  if (Date.now() - clearArm > 3000) { clearArm = Date.now(); $('msg2').textContent = 'もう一度 押すと 観測値を すべて消します（3秒以内）'; return; }
+  S.obs = []; renderAll(); $('msg2').textContent = '観測値を 消しました';
+};
+// ★印刷の直前に、入力欄の 値を 隣の 文字（.pv）に 写す。Ctrl+P で印刷したときも 効くように beforeprint で行う
+function fillPrintText() {
+  document.querySelectorAll('.wrap input:not([type=file]), .wrap select, .wrap textarea').forEach(el => {
+    let pv = el.nextElementSibling;
+    if (!pv || !pv.classList.contains('pv')) { pv = document.createElement('span'); pv.className = 'pv'; el.after(pv); }
+    pv.classList.toggle('n', el.classList.contains('n'));
+    pv.textContent = el.tagName === 'SELECT' ? (el.selectedOptions[0]?.textContent ?? '') : el.value;
+  });
+}
+window.addEventListener('beforeprint', fillPrintText);
+$('bPrint').onclick = () => { fillPrintText(); window.print(); };
+
+load(); renderAll();
+</script>
+</body>
+</html>
