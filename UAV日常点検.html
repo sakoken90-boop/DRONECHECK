@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UAV 日常点検・飛行記録</title>
+<style>
+/* 現場の点検表。1日＝1枚。チェックは 大きく押しやすく、印刷は A4 縦 1枚 */
+:root {
+  --bg: #f4f6f7; --card: #ffffff; --ink: #1b2730; --sub: #5a6a74; --rule: #cdd6db;
+  --accent: #1f5f8b; --ok: #1e7a3a; --okbg: #e3f3e7; --ng: #b3261e; --ngbg: #fbe4e2; --na: #6b7a83; --nabg: #eef1f3;
+  --mono: "BIZ UDGothic", "Consolas", "MS Gothic", monospace;
+  --sans: "BIZ UDPGothic", "Meiryo", "Hiragino Sans", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141a1e; --card: #1c2429; --ink: #e3ebef; --sub: #9db0ba; --rule: #34424a; --accent: #6fb4e4;
+          --ok: #7fd49a; --okbg: #1f3a29; --ng: #ff9a8f; --ngbg: #45221f; --na: #a9b6bd; --nabg: #26313a; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 var(--sans); }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 16px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 14px; }
+header h1 { margin: 0; font-size: 22px; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--sub); font-size: 13px; }
+section { background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; min-width: 0; }
+section h2 { margin: 0 0 8px; font-size: 15px; color: var(--accent); letter-spacing: .04em; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 12px; }
+label.f { display: grid; gap: 2px; font-size: 12px; color: var(--sub); }
+input, select, textarea { font: 14px var(--sans); color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 8px; width: 100%; }
+input.n { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { border: 1px solid var(--rule); padding: 4px 6px; vertical-align: middle; }
+th { background: var(--bg); font-size: 12px; color: var(--sub); font-weight: 600; white-space: nowrap; }
+td.item b { display: block; font-size: 13px; }
+td.item { min-width: 9em; }
+td input[data-cm] { min-width: 6em; }
+td.item span { font-size: 12px; color: var(--sub); }
+.tri { display: inline-flex; gap: 4px; }
+.tri button { min-width: 44px; padding: 6px 0; font: 700 13px var(--sans); border-radius: 4px; border: 1px solid var(--rule); background: transparent; color: var(--sub); cursor: pointer; }
+.tri button.on.ok { background: var(--okbg); color: var(--ok); border-color: var(--ok); }
+.tri button.on.ng { background: var(--ngbg); color: var(--ng); border-color: var(--ng); }
+.tri button.on.na { background: var(--nabg); color: var(--na); border-color: var(--na); }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button.b { font: 600 13px var(--sans); border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+button.pri { background: var(--accent); color: var(--card); }
+button.del { border: 1px solid var(--rule); color: var(--sub); background: transparent; border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+.pill { display: inline-block; padding: 0 8px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+.pill.ok { color: var(--ok); background: var(--okbg); } .pill.ng { color: var(--ng); background: var(--ngbg); } .pill.wa { color: var(--na); background: var(--nabg); }
+.note { color: var(--sub); font-size: 12px; }
+.msg { min-height: 1.4em; color: var(--accent); font-size: 13px; }
+.days { display: flex; flex-wrap: wrap; gap: 6px; }
+.days button { font: 13px var(--mono); border: 1px solid var(--rule); background: transparent; color: var(--ink); border-radius: 14px; padding: 2px 10px; cursor: pointer; }
+.days button.cur { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.pv { display: none; }
+@media (max-width: 560px) { .tri button { min-width: 40px; } td.item b { font-size: 12px; } }
+@media print {
+  body { background: #fff; color: #000; font-size: 10.5px; }
+  .noprint { display: none !important; }
+  .wrap { max-width: none; padding: 0; gap: 6px; }
+  section { border: 0; padding: 2px 0; }
+  input, select, textarea { display: none !important; }
+  .pv { display: block; white-space: pre-wrap; word-break: break-all; min-height: 1.2em; color: #000; }
+  label.f .pv { border-bottom: 1px solid #999; padding: 1px 2px; }
+  td .pv.n { text-align: right; font-family: var(--mono); }
+  th { background: #eee; color: #000; }
+  .tri button { display: none; } .tri .pv { display: inline; font-weight: 700; }
+  tr, .grid, label.f { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  /* 1日＝A4 1枚に 収める */
+  header p, .note { font-size: 9px; }
+  .grid.w2 { grid-template-columns: 1fr 1fr !important; }
+  header h1 { font-size: 16px; }
+  section h2 { margin: 2px 0 3px; font-size: 12px; }
+  .grid { grid-template-columns: repeat(4, 1fr) !important; gap: 2px 10px; }
+  label.f { font-size: 9px; gap: 0; }
+  th, td { padding: 1px 4px; }
+  td.item b { display: inline; font-size: 10.5px; margin-right: 6px; }
+  td.item span { font-size: 9px; }
+  textarea + .pv { min-height: 2.4em; }
+  @page { size: A4 portrait; margin: 10mm; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>UAV 日常点検・飛行記録</h1>
+  <p>航空法の 飛行日誌（飛行記録・日常点検記録）の 項目で、1日分を 1枚に まとめる。飛行前と 飛行後に 点検し、異常があれば 飛行しない。</p>
+</header>
+
+<section class="noprint">
+  <h2>記録の日</h2>
+  <div class="bar">
+    <label class="f" style="max-width:220px">日付<input id="iDay" type="date"></label>
+    <button class="b" id="bNewDay">この日の記録を開く／作る</button>
+    <button class="b" id="bCopyPrev">前回の機体・操縦者を写す</button>
+  </div>
+  <div class="days" id="days" style="margin-top:8px"></div>
+</section>
+
+<section>
+  <h2>機体と体制</h2>
+  <div class="grid">
+    <label class="f">工事名<input id="koji" data-k="koji"></label>
+    <label class="f">飛行日<input id="date" data-k="date" type="date"></label>
+    <label class="f">機体（型式）<input id="model" data-k="model"></label>
+    <label class="f">登録記号（JU…）<input id="reg" data-k="reg" placeholder="JU0000000000"></label>
+    <label class="f">製造番号<input id="sn" data-k="sn"></label>
+    <label class="f">送信機（操縦装置）<input id="rc" data-k="rc"></label>
+    <label class="f">操縦者<input id="pilot" data-k="pilot"></label>
+    <label class="f">補助者（監視）<input id="assist" data-k="assist"></label>
+    <label class="f">天候<input id="weather" data-k="weather" placeholder="晴れ"></label>
+    <label class="f">風速（m/s）<input id="wind" data-k="wind" class="n" placeholder="2.0"></label>
+    <label class="f">気温（℃）<input id="temp" data-k="temp" class="n"></label>
+    <label class="f">飛行の目的<input id="purpose" data-k="purpose" placeholder="起工測量（空中写真測量）"></label>
+  </div>
+  <p class="note" style="margin:8px 0 0">風速 5 m/s 以上・降雨・視程不良のときは 飛行しない（施工計画書 6③3）。</p>
+</section>
+
+<section>
+  <h2>日常点検 <span id="chkSum"></span></h2>
+  <div class="tbl"><table id="tChk"><thead><tr><th>点検項目・内容</th><th>飛行前</th><th>飛行後</th><th>備考</th></tr></thead><tbody></tbody></table></div>
+  <p class="note">○＝異常なし、×＝異常あり（飛行しない・整備する）、－＝該当なし。</p>
+</section>
+
+<section>
+  <h2>飛行記録 <span class="note" id="flySum"></span></h2>
+  <div class="tbl"><table id="tFly"><thead><tr><th>No</th><th>離陸場所</th><th>離陸時刻</th><th>着陸場所</th><th>着陸時刻</th><th>飛行時間</th><th>内容（高度・コース等）</th><th>バッテリー</th><th class="noprint"></th></tr></thead><tbody></tbody></table></div>
+  <div class="bar noprint" style="margin-top:8px"><button class="b" id="bAddFly">飛行を追加</button></div>
+</section>
+
+<section>
+  <h2>安全に影響のあった事項・不具合と処置</h2>
+  <div class="grid w2" style="grid-template-columns:1fr">
+    <label class="f">安全に影響のあった事項（ヒヤリハット等）<textarea id="safety" data-k="safety" rows="2" placeholder="なし"></textarea></label>
+    <label class="f">不具合と その処置（整備の内容・実施者）<textarea id="fix" data-k="fix" rows="2" placeholder="なし"></textarea></label>
+  </div>
+  <div class="grid" style="margin-top:8px">
+    <label class="f">点検者（署名）<input id="sign1" data-k="sign1"></label>
+    <label class="f">確認者（署名）<input id="sign2" data-k="sign2"></label>
+  </div>
+</section>
+
+<section class="noprint">
+  <h2>保存・印刷</h2>
+  <div class="bar">
+    <button class="b pri" id="bPrint">この日を印刷（PDF保存）</button>
+    <button class="b" id="bCsv">飛行記録を CSV で保存（全日）</button>
+    <button class="b" id="bJson">全データを保存（バックアップ）</button>
+    <label class="f" style="display:inline-grid">バックアップを開く<input id="iJson" type="file" accept=".json"></label>
+    <button class="b" id="bDel">この日の記録を消す</button>
+    <span class="msg" id="msg"></span>
+  </div>
+  <p class="note">記録は この端末の ブラウザに 自動で残ります。端末を変えるときや 念のため、定期的に「全データを保存」してください。</p>
+</section>
+</div>
+
+<script>
+'use strict';
+const KEY = 'uav_daily_shiota_v1';
+// 日常点検の項目（航空法 飛行日誌の 日常点検記録の 項目に 合わせた）
+const ITEMS = [
+  ['機体全般', '機器の取付け状態（ねじ・コネクタ・ケーブル等）'],
+  ['プロペラ', '外観・損傷・ゆがみ・取付けの緩み'],
+  ['フレーム（アーム・脚）', '外観・損傷・ゆがみ・ひび'],
+  ['通信系統', '機体と 操縦装置の 通信の 健全性（接続・電波強度）'],
+  ['推進系統', 'モーターの 健全性（回転・異音・発熱）'],
+  ['電源系統', '機体・操縦装置の 電源の 健全性（端子・膨らみ）'],
+  ['自動制御系統', '飛行制御装置の 健全性（コンパス・IMU・GNSS測位・RTK FIX）'],
+  ['操縦装置', '外観・スティック・スイッチの 健全性'],
+  ['バッテリー', '充電状況・残量表示の 健全性・セル電圧の ばらつき'],
+  ['カメラ・ジンバル', 'レンズの汚れ・ジンバルの動き・記録媒体の空き'],
+  ['フェールセーフ', 'RTH（自動帰還）高度・ホームポイントの 設定'],
+];
+const DEF = { koji: '07国補河改 第07-05-149-A-004号 河川改修工事（その４）', model: 'DJI Phantom 4 RTK', rc: '', purpose: '空中写真測量（UAV）' };
+let DB = { days: {}, cur: null };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+
+function blankDay(date) {
+  return Object.assign({ date, chk: ITEMS.map(() => ({ pre: '', post: '', m: '' })), fly: [{ from: '', t0: '', to: '', t1: '', memo: '', bat: '' }] }, DEF);
+}
+function load() { try { const t = localStorage.getItem(KEY); if (t) DB = JSON.parse(t); } catch (e) {} }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) {} }
+const D = () => DB.days[DB.cur];
+
+function openDay(date) {
+  if (!DB.days[date]) DB.days[date] = blankDay(date);
+  DB.cur = date; save(); render();
+}
+
+function renderDays() {
+  const ks = Object.keys(DB.days).sort().reverse();
+  $('days').innerHTML = ks.map(k => {
+    const d = DB.days[k], ng = d.chk.some(c => c.pre === 'ng' || c.post === 'ng');
+    return `<button data-day="${k}" class="${k === DB.cur ? 'cur' : ''}">${k}${ng ? ' ×' : ''}</button>`;
+  }).join('') || '<span class="note">まだ 記録が ありません</span>';
+}
+function tri(i, w, v) {
+  const b = (val, lab, cls) => `<button type="button" data-ci="${i}" data-w="${w}" data-v="${val}" class="${cls}${v === val ? ' on' : ''}">${lab}</button>`;
+  return `<span class="tri">${b('ok', '○', 'ok')}${b('ng', '×', 'ng')}${b('na', '－', 'na')}</span>`;
+}
+const mark = v => v === 'ok' ? '○' : v === 'ng' ? '×' : v === 'na' ? '－' : '';
+function minutes(t0, t1) {
+  const p = t => { const m = String(t).match(/^(\d{1,2}):(\d{2})$/); return m ? +m[1] * 60 + +m[2] : null; };
+  const a = p(t0), b = p(t1); return a == null || b == null || b < a ? null : b - a;
+}
+function render() {
+  const d = D();
+  $('iDay').value = DB.cur || today();
+  document.querySelectorAll('[data-k]').forEach(el => { el.value = d ? (d[el.dataset.k] ?? '') : ''; });
+  if (!d) { $('tChk').tBodies[0].innerHTML = ''; $('tFly').tBodies[0].innerHTML = ''; renderDays(); return; }
+  $('tChk').tBodies[0].innerHTML = ITEMS.map(([a, b], i) => `<tr>
+    <td class="item"><b>${a}</b><span>${b}</span></td>
+    <td>${tri(i, 'pre', d.chk[i].pre)}</td><td>${tri(i, 'post', d.chk[i].post)}</td>
+    <td><input data-cm="${i}" value="${esc(d.chk[i].m)}"></td></tr>`).join('');
+  $('tFly').tBodies[0].innerHTML = d.fly.map((f, i) => {
+    const m = minutes(f.t0, f.t1);
+    return `<tr><td>${i + 1}</td>
+    <td><input data-fi="${i}" data-f="from" value="${esc(f.from)}" placeholder="施工範囲 天端"></td>
+    <td><input data-fi="${i}" data-f="t0" value="${esc(f.t0)}" placeholder="9:30" style="max-width:80px"></td>
+    <td><input data-fi="${i}" data-f="to" value="${esc(f.to)}" placeholder="同上"></td>
+    <td><input data-fi="${i}" data-f="t1" value="${esc(f.t1)}" placeholder="9:52" style="max-width:80px"></td>
+    <td class="n" style="text-align:right">${m == null ? '' : m + ' 分'}</td>
+    <td><input data-fi="${i}" data-f="memo" value="${esc(f.memo)}" placeholder="高度50m・2コース"></td>
+    <td><input data-fi="${i}" data-f="bat" value="${esc(f.bat)}" placeholder="No.1 100→35%"></td>
+    <td class="noprint"><button class="del" data-fd="${i}">削除</button></td></tr>`;
+  }).join('');
+  // まとめ
+  const pre = d.chk.filter(c => c.pre).length, ng = d.chk.filter(c => c.pre === 'ng' || c.post === 'ng').length;
+  $('chkSum').innerHTML = ng ? `<span class="pill ng">異常あり ${ng} 項目</span>`
+    : pre === ITEMS.length ? '<span class="pill ok">飛行前 点検済み</span>' : `<span class="pill wa">飛行前 ${pre}/${ITEMS.length}</span>`;
+  const tot = d.fly.reduce((s, f) => s + (minutes(f.t0, f.t1) || 0), 0);
+  const all = Object.values(DB.days).reduce((s, x) => s + x.fly.reduce((t, f) => t + (minutes(f.t0, f.t1) || 0), 0), 0);
+  $('flySum').textContent = `この日 ${d.fly.filter(f => f.t0).length} 回・${tot} 分／記録した全日の合計 ${Math.floor(all / 60)} 時間 ${all % 60} 分`;
+  renderDays();
+}
+
+// 入力
+document.addEventListener('input', e => {
+  const t = e.target, d = D(); if (!d) return;
+  if (t.dataset.k) d[t.dataset.k] = t.value;
+  else if (t.dataset.cm != null) d.chk[+t.dataset.cm].m = t.value;
+  else if (t.dataset.fi != null) d.fly[+t.dataset.fi][t.dataset.f] = t.value;
+  else return;
+  if (t.dataset.k === 'date' && t.value && t.value !== DB.cur && !DB.days[t.value]) { delete DB.days[DB.cur]; DB.days[t.value] = d; DB.cur = t.value; renderDays(); }
+  save();
+});
+document.addEventListener('change', e => { if (e.target.dataset.fi != null) render(); });
+document.addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  const d = D();
+  if (t.dataset.ci != null && d) { const c = d.chk[+t.dataset.ci]; c[t.dataset.w] = c[t.dataset.w] === t.dataset.v ? '' : t.dataset.v; save(); render(); }
+  else if (t.dataset.fd != null && d) { d.fly.splice(+t.dataset.fd, 1); if (!d.fly.length) d.fly.push({ from: '', t0: '', to: '', t1: '', memo: '', bat: '' }); save(); render(); }
+  else if (t.dataset.day) openDay(t.dataset.day);
+});
+$('bNewDay').onclick = () => openDay($('iDay').value || today());
+$('bCopyPrev').onclick = () => {
+  const ks = Object.keys(DB.days).filter(k => k < DB.cur).sort(); const p = DB.days[ks[ks.length - 1]];
+  if (!p) { $('msg').textContent = '前の記録が ありません'; return; }
+  for (const k of ['koji', 'model', 'reg', 'sn', 'rc', 'pilot', 'assist', 'purpose']) D()[k] = p[k];
+  save(); render(); $('msg').textContent = ks[ks.length - 1] + ' の 機体・操縦者を 写しました';
+};
+$('bAddFly').onclick = () => { const d = D(); if (!d) return; const l = d.fly[d.fly.length - 1] || {}; d.fly.push({ from: l.from || '', t0: '', to: l.to || '', t1: '', memo: '', bat: '' }); save(); render(); };
+
+// 印刷：入力欄の値を 文字に 写してから
+function fillPrintText() {
+  document.querySelectorAll('.wrap input:not([type=file]), .wrap textarea').forEach(el => {
+    let pv = el.nextElementSibling;
+    if (!pv || !pv.classList.contains('pv')) { pv = document.createElement('span'); pv.className = 'pv'; el.after(pv); }
+    pv.classList.toggle('n', el.classList.contains('n')); pv.textContent = el.value;
+  });
+  document.querySelectorAll('.tri').forEach(tr => {
+    let pv = tr.querySelector('.pv'); if (!pv) { pv = document.createElement('span'); pv.className = 'pv'; tr.appendChild(pv); }
+    const on = tr.querySelector('button.on'); pv.textContent = on ? on.textContent : '';
+  });
+}
+window.addEventListener('beforeprint', fillPrintText);
+$('bPrint').onclick = () => { fillPrintText(); window.print(); };
+
+// 書き出し
+function saveFile(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([(type.includes('csv') ? '﻿' : '') + text], { type }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000); $('msg').textContent = name + ' を 保存しました';
+}
+$('bCsv').onclick = () => {
+  const L = ['飛行日,No,操縦者,補助者,機体,登録記号,離陸場所,離陸時刻,着陸場所,着陸時刻,飛行時間(分),内容,バッテリー,日常点検(飛行前),異常'];
+  for (const k of Object.keys(DB.days).sort()) {
+    const d = DB.days[k], ok = d.chk.every(c => c.pre === 'ok' || c.pre === 'na'), ng = d.chk.some(c => c.pre === 'ng' || c.post === 'ng');
+    d.fly.forEach((f, i) => { if (!f.t0 && !f.from) return;
+      L.push([k, i + 1, d.pilot, d.assist, d.model, d.reg, f.from, f.t0, f.to, f.t1, minutes(f.t0, f.t1) ?? '', f.memo, f.bat, ok ? '済' : '未', ng ? 'あり' : 'なし']
+        .map(v => /[,"\n]/.test(String(v ?? '')) ? '"' + String(v).replace(/"/g, '""') + '"' : (v ?? '')).join(','));
+    });
+  }
+  saveFile('UAV飛行記録_' + today().replace(/-/g, '') + '.csv', L.join('\r\n') + '\r\n', 'text/csv');
+};
+$('bJson').onclick = () => saveFile('UAV日常点検_' + today().replace(/-/g, '') + '.json', JSON.stringify(DB, null, 1), 'application/json');
+$('iJson').onchange = e => {
+  const fl = e.target.files[0]; if (!fl) return; const rd = new FileReader();
+  rd.onload = () => { try { const x = JSON.parse(rd.result); if (!x.days) throw 0; DB = x; save(); render(); $('msg').textContent = 'バックアップを 開きました'; } catch (er) { $('msg').textContent = 'バックアップを 読めませんでした（形が 違います）'; } };
+  rd.readAsText(fl, 'utf-8');
+};
+let delArm = 0;
+$('bDel').onclick = () => {
+  if (!D()) return;
+  if (Date.now() - delArm > 3000) { delArm = Date.now(); $('msg').textContent = 'もう一度 押すと ' + DB.cur + ' の記録を 消します（3秒以内）'; return; }
+  delete DB.days[DB.cur]; DB.cur = Object.keys(DB.days).sort().pop() || null; save(); render(); $('msg').textContent = '消しました';
+};
+
+load();
+if (!DB.cur || !DB.days[DB.cur]) openDay(today()); else render();
+</script>
+</body>
+</html>
